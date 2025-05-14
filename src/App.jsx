@@ -3,6 +3,11 @@ import { useState, useRef } from 'react';
 import './App.css';
 import { diffWords } from 'diff';
 import { jsPDF } from 'jspdf';
+import * as pdfjsLib from 'pdfjs-dist';
+import { GlobalWorkerOptions } from 'pdfjs-dist';
+
+// Asegúrate de usar la versión correspondiente del worker
+GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.worker.min.js';
 
 function App() {
   const [casoIA, setCasoIA] = useState('');
@@ -13,32 +18,54 @@ function App() {
   const resultadoRef = useRef();
 
   const llamarGemini = async (prompt) => {
+    console.log("📩 Prompt recibido:", prompt);
+
     try {
-      const response = await fetch('/api/gemini', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt }),
+      const url = https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY};
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }] }]
+        })
       });
-      const data = await response.json();
-      return data?.candidates?.[0]?.content?.parts?.[0]?.text || '⚠️ No se generó contenido válido.';
+
+      console.log("✅ Código de estado:", response.status);
+
+      const text = await response.text();
+      // console.log("📨 Respuesta cruda:", text);
+
+      if (!response.ok) {
+        console.error("❌ Error en respuesta HTTP:", text);
+        return alert("Error HTTP de Gemini: " + response.statusText);
+      }
+
+      const data = JSON.parse(text);
+      if (!data || !data.candidates) {
+        return alert("❌ Gemini devolvió una respuesta vacía o sin candidatos.");
+      }
+      console.log(data.candidates[0].content.parts[0].text);
+
+      return data.candidates[0].content.parts[0].text
+
     } catch (error) {
-      console.error("❌ Error en llamarGemini:", error.message);
-      return `❌ Error al conectar con el servidor: ${error.message}`;
+      console.error("💥 Error al conectar con Gemini:", error);
     }
   };
 
   const generarCaso = async () => {
     setLoading(true);
     const prompt = `
-      Genera un caso de estudio educativo sobre *Gestión de Metadatos y Datos Maestros* siguiendo esta estructura en formato Markdown:
+      Genera un caso de estudio educativo sobre Gestión de Metadatos y Datos Maestros siguiendo esta estructura en formato Markdown:
 
-      **Título del caso:** Nombre del caso creado por la IA
+      *Título del caso:* Nombre del caso creado por la IA
 
-      1. **Introducción:** Explica brevemente la importancia del tema.
-      2. **Objetivo:** Qué busca lograr la empresa.
-      3. **Contexto:** Describe el entorno o situación del caso (empresa, problema, entorno).
-      4. **Herramientas y Tecnologías Usadas:** Menciona tecnologías utilizadas.
-      5. **Implementación según ISO/IEC 11179:** Explica cómo se aplicó la norma ISO/IEC 11179.
+      1. *Introducción:* Explica brevemente la importancia del tema.
+      2. *Objetivo:* Qué busca lograr la empresa.
+      3. *Contexto:* Describe el entorno o situación del caso (empresa, problema, entorno).
+      4. *Herramientas y Tecnologías Usadas:* Menciona tecnologías utilizadas.
+      5. *Implementación según ISO/IEC 11179:* Explica cómo se aplicó la norma ISO/IEC 11179.
 
       Hazlo en máximo 4 párrafos. Sé claro, preciso y educativo.
     `;
@@ -47,25 +74,48 @@ function App() {
     setLoading(false);
   };
 
+
   const subirPDF = async (e) => {
     const file = e.target.files[0];
     if (!file || file.type !== 'application/pdf') {
       alert('Por favor sube un archivo PDF válido.');
       return;
     }
-    const formData = new FormData();
-    formData.append('pdf', file);
-    try {
-      const res = await fetch('/api/extract', {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-      setCasoIA(data.text);
-    } catch (err) {
-      alert('❌ Error al procesar el PDF: ' + err.message);
-    }
+
+    const reader = new FileReader();
+
+    reader.onload = async () => {
+      const pdfData = new Uint8Array(reader.result);
+
+      try {
+        // Cargar el documento PDF
+        const pdfDoc = await pdfjsLib.getDocument(pdfData).promise;
+
+        let textContent = '';
+
+        // Extraer texto de cada página
+        for (let i = 1; i <= pdfDoc.numPages; i++) {
+          const page = await pdfDoc.getPage(i);
+          const content = await page.getTextContent();
+
+          // Agregar el texto extraído a textContent
+          content.items.forEach(item => {
+            textContent += item.str + ' ';
+          });
+        }
+
+        // Después de extraer el texto, lo guardamos en el estado
+        setCasoIA(textContent.trim());
+      } catch (err) {
+        alert('❌ Error al procesar el PDF: ' + err.message);
+      }
+    };
+
+    // Leer el archivo PDF como ArrayBuffer
+    reader.readAsArrayBuffer(file);
   };
+
+
 
   const guardarAnalisis = () => {
     if (!analisisHumano.trim()) {
@@ -124,7 +174,7 @@ function App() {
     const diferencias = diff.filter(part => part.added || part.removed).length;
     const porcentaje = Math.round((1 - diferencias / total) * 100);
 
-    const matches = respuesta.match(/Análisis humano[^\"]*(\d{1,2})\/10.*Análisis IA[^\"]*(\d{1,2})\/10/i);
+    const matches = respuesta.match(/Análisis humano[^\"](\d{1,2})\/10.*Análisis IA[^\"](\d{1,2})\/10/i);
 
     let resumen = '';
     let coincidenciaTexto = `
@@ -152,7 +202,7 @@ function App() {
     }
 
     const insertAfter = comparacionHTML.includes('¿Cuál análisis es mejor y por qué?')
-      ? comparacionHTML.replace('¿Cuál análisis es mejor y por qué?', `<strong>¿Cuál análisis es mejor y por qué?</strong>\n\n${coincidenciaTexto}`)
+      ? comparacionHTML.replace('¿Cuál análisis es mejor y por qué?', <strong>¿Cuál análisis es mejor y por qué?</strong>\n\n${coincidenciaTexto})
       : comparacionHTML + coincidenciaTexto;
 
     setComparacionFinal(`
@@ -162,63 +212,63 @@ function App() {
     `);
   };
 
-const descargarPDF = () => {
-  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-  const margin = 50;
-  const usableWidth = doc.internal.pageSize.getWidth() - margin * 2;
-  let y = margin;
+  const descargarPDF = () => {
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    const margin = 50;
+    const usableWidth = doc.internal.pageSize.getWidth() - margin * 2;
+    let y = margin;
 
-  const limpiarContenido = (texto) => {
-    return texto
-      .replace(/<[^>]*>/g, '')
-      .replace(/&[a-z]+;/gi, '')
-      .replace(/[\u0080-\uFFFF]/g, '')
-      .replace(/\*\*(.*?)\*\*/g, '$1')
-      .replace(/\n{2,}/g, '\n')
-      .trim();
+    const limpiarContenido = (texto) => {
+      return texto
+        .replace(/<[^>]*>/g, '')
+        .replace(/&[a-z]+;/gi, '')
+        .replace(/[\u0080-\uFFFF]/g, '')
+        .replace(/\\(.?)\\*/g, '$1')
+        .replace(/\n{2,}/g, '\n')
+        .trim();
+    };
+
+    const agregarSeccion = (tituloPlano, contenido) => {
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text(tituloPlano, doc.internal.pageSize.getWidth() / 2, y, { align: 'center' });
+      y += 30;
+
+      const textoPlano = limpiarContenido(contenido);
+      const parrafos = textoPlano.split(/\n+/);
+
+      parrafos.forEach((parrafo) => {
+        const texto = parrafo.trim();
+        if (!texto) return;
+
+        if (/^(\d+\.\s.+?:|Análisis humano:|Análisis IA:|Justificación breve:|¿Cuál análisis.+|Porcentaje.+):?$/i.test(texto)) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(12);
+          doc.text(texto, margin, y, { maxWidth: usableWidth });
+          y += 18;
+        } else {
+          doc.setFont('times', 'normal');
+          doc.setFontSize(11);
+          const lineas = doc.splitTextToSize(texto, usableWidth);
+          doc.text(lineas, margin, y, { align: 'justify', maxWidth: usableWidth });
+          y += lineas.length * 15 + 8;
+        }
+
+        if (y > doc.internal.pageSize.getHeight() - 80) {
+          doc.addPage();
+          y = margin;
+        }
+      });
+
+      y += 20;
+    };
+
+    if (casoIA) agregarSeccion('Caso de Estudio Generado por IA', casoIA);
+    if (auditoriaIA) agregarSeccion('Auditoría Técnica IA', auditoriaIA);
+    if (comparacionFinal) agregarSeccion('Comparación Final', comparacionFinal);
+
+    doc.save('informe_auditoria_IA.pdf');
   };
-
-  const agregarSeccion = (tituloPlano, contenido) => {
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text(tituloPlano, doc.internal.pageSize.getWidth() / 2, y, { align: 'center' });
-    y += 30;
-
-    const textoPlano = limpiarContenido(contenido);
-    const parrafos = textoPlano.split(/\n+/);
-
-    parrafos.forEach((parrafo) => {
-      const texto = parrafo.trim();
-      if (!texto) return;
-
-      if (/^(\d+\.\s.+?:|Análisis humano:|Análisis IA:|Justificación breve:|¿Cuál análisis.+|Porcentaje.+):?$/i.test(texto)) {
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(12);
-        doc.text(texto, margin, y, { maxWidth: usableWidth });
-        y += 18;
-      } else {
-        doc.setFont('times', 'normal');
-        doc.setFontSize(11);
-        const lineas = doc.splitTextToSize(texto, usableWidth);
-        doc.text(lineas, margin, y, { align: 'justify', maxWidth: usableWidth });
-        y += lineas.length * 15 + 8;
-      }
-
-      if (y > doc.internal.pageSize.getHeight() - 80) {
-        doc.addPage();
-        y = margin;
-      }
-    });
-
-    y += 20;
-  };
-
-  if (casoIA) agregarSeccion('Caso de Estudio Generado por IA', casoIA);
-  if (auditoriaIA) agregarSeccion('Auditoría Técnica IA', auditoriaIA);
-  if (comparacionFinal) agregarSeccion('Comparación Final', comparacionFinal);
-
-  doc.save('informe_auditoria_IA.pdf');
-};
 
 
   return (
