@@ -57,15 +57,15 @@ function App() {
   const generarCaso = async () => {
     setLoading(true);
     const prompt = `
-      Genera un caso de estudio educativo sobre Gestión de Metadatos y Datos Maestros siguiendo esta estructura en formato Markdown:
+      Genera un caso de estudio educativo sobre *Gestión de Metadatos y Datos Maestros* siguiendo esta estructura en formato Markdown:
 
-      *Título del caso:* Nombre del caso creado por la IA
+      **Título del caso:** Nombre del caso creado por la IA
 
-      1. *Introducción:* Explica brevemente la importancia del tema.
-      2. *Objetivo:* Qué busca lograr la empresa.
-      3. *Contexto:* Describe el entorno o situación del caso (empresa, problema, entorno).
-      4. *Herramientas y Tecnologías Usadas:* Menciona tecnologías utilizadas.
-      5. *Implementación según ISO/IEC 11179:* Explica cómo se aplicó la norma ISO/IEC 11179.
+      1. **Introducción:** Explica brevemente la importancia del tema.
+      2. **Objetivo:** Qué busca lograr la empresa.
+      3. **Contexto:** Describe el entorno o situación del caso (empresa, problema, entorno).
+      4. **Herramientas y Tecnologías Usadas:** Menciona tecnologías utilizadas.
+      5. **Implementación según ISO/IEC 11179:** Explica cómo se aplicó la norma ISO/IEC 11179.
 
       Hazlo en máximo 4 párrafos. Sé claro, preciso y educativo.
     `;
@@ -174,7 +174,7 @@ function App() {
     const diferencias = diff.filter(part => part.added || part.removed).length;
     const porcentaje = Math.round((1 - diferencias / total) * 100);
 
-    const matches = respuesta.match(/Análisis humano[^\"](\d{1,2})\/10.*Análisis IA[^\"](\d{1,2})\/10/i);
+    const matches = respuesta.match(/Análisis humano[^\"]*(\d{1,2})\/10.*Análisis IA[^\"]*(\d{1,2})\/10/i);
 
     let resumen = '';
     let coincidenciaTexto = `
@@ -202,7 +202,7 @@ function App() {
     }
 
     const insertAfter = comparacionHTML.includes('¿Cuál análisis es mejor y por qué?')
-      ? comparacionHTML.replace('¿Cuál análisis es mejor y por qué?', <strong>¿Cuál análisis es mejor y por qué?</strong>\n\n${coincidenciaTexto})
+      ? comparacionHTML.replace('¿Cuál análisis es mejor y por qué?', `<strong>¿Cuál análisis es mejor y por qué?</strong>\n\n${coincidenciaTexto}`)
       : comparacionHTML + coincidenciaTexto;
 
     setComparacionFinal(`
@@ -223,7 +223,7 @@ function App() {
         .replace(/<[^>]*>/g, '')
         .replace(/&[a-z]+;/gi, '')
         .replace(/[\u0080-\uFFFF]/g, '')
-        .replace(/\\(.?)\\*/g, '$1')
+        .replace(/\*\*(.*?)\*\*/g, '$1')
         .replace(/\n{2,}/g, '\n')
         .trim();
     };
