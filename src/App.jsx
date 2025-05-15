@@ -21,7 +21,7 @@ function App() {
     console.log("📩 Prompt recibido:", prompt);
 
     try {
-      const url = https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY};
+      const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`;
 
       const response = await fetch(url, {
         method: "POST",
